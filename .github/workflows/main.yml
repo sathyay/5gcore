@@ -1,0 +1,21 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Verify Files
+        run: ls -lrt
+
+      - name: Run Script
+        run: echo "Pipeline executed successfully"
