@@ -41,16 +41,19 @@ jobs:
 
       - name: Install Python deps
         run: pip install pyyaml
+        
       - name: Install pyATS
         run: |
           pip install --upgrade pip
-          pip install pyats genie       
-        
-      - run: |
+          pip install pyats genie kubernetes
+          
+      - name: Configure kubeconfig  
+        run: |
           echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
           echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
-
-      - run: python scripts/check_dns.py
+          
+      - name: Run DNS check
+        run: python scripts/check_dns.py
 
 
 # =========================
