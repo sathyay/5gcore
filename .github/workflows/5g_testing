@@ -1,4 +1,4 @@
-name: oai-5g-usecase
+name: oai-5g-testcase_scenarios
 
 on:
   schedule:
