@@ -28,13 +28,16 @@ def check_sctp_assocs(pod):
     return len(lines) > 1, r.stdout.strip()
 
 def get_sctp_raddr(pod):
-    """Get remote AMF address from live SCTP assoc"""
     r = run(f"kubectl exec -n {NAMESPACE} {pod} -c gnb -- "
             f"cat /proc/net/sctp/assocs")
+
     for line in r.stdout.splitlines()[1:]:
-        parts = line.split()
-        if len(parts) > 13:
-            return parts[-3]   # RADDRS field
+        if "<->" in line:
+            try:
+                return line.split("<->")[1].strip().split()[0].replace("*", "")
+            except:
+                pass
+
     return "unknown"
 
 def check_ngap_in_full_logs(pod):
