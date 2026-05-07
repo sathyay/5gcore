@@ -1,0 +1,122 @@
+name: oai-5g-usecase
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+
+# =========================
+# STAGE 1 - PARALLEL HEALTH
+# =========================
+
+  k8s-health:
+    name: Kubernetes Health Check
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-kubectl@v3
+
+      - run: |
+          echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
+          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
+
+      - run: python scripts/check_k8s_health.py
+
+
+  dns-check:
+    name: DNS Validation
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-kubectl@v3
+
+      - run: |
+          echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
+          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
+
+      - run: python scripts/check_dns.py
+
+
+# =========================
+# STAGE 2 - NGAP + AMF
+# =========================
+
+  ngap-validation:
+    name: NGAP Validation
+    runs-on: self-hosted
+    needs: [k8s-health, dns-check]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-kubectl@v3
+
+      - run: |
+          echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
+          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
+
+      - run: python scripts/check_ngap.py
+
+
+  amf-registration:
+    name: AMF Registration Check
+    runs-on: self-hosted
+    needs: [ngap-validation]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-kubectl@v3
+
+      - run: |
+          echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
+          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
+
+      - run: python scripts/check_amf_registration.py
+
+
+# =========================
+# STAGE 3 - UE FLOW
+# =========================
+
+  ue-attach:
+    name: UE Attach Validation
+    runs-on: self-hosted
+    needs: [amf-registration]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-kubectl@v3
+
+      - run: |
+          echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
+          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
+
+      - run: python scripts/check_ue_attach.py
+
+
+# =========================
+# REPORTING
+# =========================
+
+  report:
+    name: Generate Report
+    runs-on: self-hosted
+    needs: [ue-attach]
+    if: always()
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oai-5g-validation-report
+          path: |
+            amf_report.txt
+            ue_report.txt
+            ngap_report.txt
