@@ -41,6 +41,10 @@ jobs:
 
       - name: Install Python deps
         run: pip install pyyaml
+      - name: Install pyATS
+        run: |
+          pip install --upgrade pip
+          pip install pyats genie       
         
       - run: |
           echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
