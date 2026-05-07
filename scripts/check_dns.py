@@ -1,11 +1,13 @@
 import subprocess
-from pyats import aetest
 
-class DNSCheck(aetest.Testcase):
+def run(cmd):
+    return subprocess.getoutput(cmd)
 
-    @aetest.test
-    def resolve_amf(self):
-        cmd = "kubectl exec deploy/oai-gnb -n oai5g -- getent hosts oai-amf"
-        output = subprocess.getoutput(cmd)
+output = run("kubectl exec deploy/oai-gnb -n oai5g -- getent hosts oai-amf")
 
-        assert "10." in output
+print("DNS OUTPUT:", output)
+
+if "10." not in output:
+    raise Exception("DNS resolution failed for AMF")
+
+print("DNS OK")
