@@ -1,134 +1,136 @@
-name: oai-5g-testcase_scenarios
+name: oai-5g-testcase-scenarios
 
 on:
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
 
+# =========================
+# SHARED SETUP JOB
+# =========================
 jobs:
 
+  setup:
+    name: Setup NetDevOps Environment
+    runs-on: self-hosted
+
+    outputs:
+      kubeconfig_path: ${{ steps.kube.outputs.path }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install core dependencies (pyATS + kubectl libs)
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            pyyaml \
+            kubernetes \
+            pyats \
+            genie
+
+      - name: Setup kubeconfig
+        id: kube
+        run: |
+          echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
+          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
+          echo "path=$PWD/kubeconfig" >> $GITHUB_OUTPUT
+
+      - name: Validate cluster access
+        run: kubectl get nodes
+
+
 # =========================
-# STAGE 1 - PARALLEL HEALTH
+# STAGE 1 - PARALLEL HEALTH CHECKS
 # =========================
 
- # k8s-health:
- #   name: Kubernetes Health Check
- #   runs-on: self-hosted
- #   steps:
- #     - uses: actions/checkout@v4
+#  k8s-health:
+#    name: Kubernetes Health Check
+#    runs-on: self-hosted
+#    needs: setup
 
- #    - uses: azure/setup-kubectl@v3
-
- #     - run: |
- #         echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
- #         echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
-
-#    - run: python scripts/check_k8s_health.py
+#    steps:
+#      - uses: actions/checkout@v4
+#      - run: kubectl get pods -A
+#      - run: python scripts/check_k8s_health.py
 
 
   dns-check:
     name: DNS Validation
     runs-on: self-hosted
+    needs: setup
+
     steps:
       - uses: actions/checkout@v4
-
-      - uses: azure/setup-kubectl@v3
       
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install Python deps
-        run: pip install pyyaml
-        
-      - name: Install pyATS
-        run: |
-          pip install --upgrade pip
-          pip install pyats genie kubernetes
-          
-      - name: Configure kubeconfig  
-        run: |
-          echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
-          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
-          
       - name: Run DNS check
         run: python scripts/check_dns.py
 
 
 # =========================
-# STAGE 2 - NGAP + AMF
+# STAGE 2 - NGAP + AMF FLOW
 # =========================
 
   ngap-validation:
     name: NGAP Validation
     runs-on: self-hosted
-    needs: [dns-check]
+    needs: dns-check
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: azure/setup-kubectl@v3
-
-      - run: |
-          echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
-          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
-
       - run: python scripts/check_ngap.py
 
 
   amf-registration:
     name: AMF Registration Check
     runs-on: self-hosted
-    needs: [ngap-validation]
+    needs: ngap-validation
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: azure/setup-kubectl@v3
-
-      - run: |
-          echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
-          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
-
       - run: python scripts/check_amf_registration.py
 
 
 # =========================
-# STAGE 3 - UE FLOW
+# STAGE 3 - UE ATTACH FLOW
 # =========================
 
   ue-attach:
     name: UE Attach Validation
     runs-on: self-hosted
-    needs: [amf-registration]
+    needs: amf-registration
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: azure/setup-kubectl@v3
-
-      - run: |
-          echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
-          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
-
       - run: python scripts/check_ue_attach.py
 
 
 # =========================
-# REPORTING
+# FINAL REPORTING
 # =========================
 
   report:
-    name: Generate Report
+    name: Generate Validation Report
     runs-on: self-hosted
-    needs: [ue-attach]
+    needs: ue-attach
     if: always()
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/upload-artifact@v4
+      - name: Collect reports
+        run: |
+          echo "Collecting reports..."
+          ls -ltr scripts/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: oai-5g-validation-report
           path: |
