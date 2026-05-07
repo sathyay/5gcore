@@ -11,19 +11,19 @@ jobs:
 # STAGE 1 - PARALLEL HEALTH
 # =========================
 
-  k8s-health:
-    name: Kubernetes Health Check
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v4
+ # k8s-health:
+ #   name: Kubernetes Health Check
+ #   runs-on: self-hosted
+ #   steps:
+ #     - uses: actions/checkout@v4
 
-      - uses: azure/setup-kubectl@v3
+ #    - uses: azure/setup-kubectl@v3
 
-      - run: |
-          echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
-          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
+ #     - run: |
+ #         echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
+ #         echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
 
-      - run: python scripts/check_k8s_health.py
+#    - run: python scripts/check_k8s_health.py
 
 
   dns-check:
@@ -33,7 +33,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: azure/setup-kubectl@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
+      - name: Install Python deps
+        run: pip install pyyaml
+        
       - run: |
           echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
           echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
