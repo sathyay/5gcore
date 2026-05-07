@@ -56,7 +56,7 @@ jobs:
   ngap-validation:
     name: NGAP Validation
     runs-on: self-hosted
-    needs: [k8s-health, dns-check]
+    needs: [dns-check]
 
     steps:
       - uses: actions/checkout@v4
