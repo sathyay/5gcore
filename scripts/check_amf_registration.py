@@ -3,7 +3,7 @@ import subprocess, datetime, sys
 
 NAMESPACE = "oai5g"
 GNB_LABEL = "app=oai-gnb"
-AMF_LABEL = "app=oai-amf"
+AMF_LABEL = "app=oai-5g"
 REPORT    = "amf_report.txt"
 
 def run(cmd):
