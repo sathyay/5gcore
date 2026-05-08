@@ -10,6 +10,7 @@ slice:
   dnn: iot-factory          # Data Network Name: like APN in 4G
   mcc: "001"                # Mobile Country Code — must match AMF
   mnc: "01"                 # Mobile Network Code — must match AMF
+  ipv4_subnet: "12.2.1.0/24"    # ← add this
   qos:
     priority: high
     max_dl_mbps: 100        # Max downlink speed for this slice
