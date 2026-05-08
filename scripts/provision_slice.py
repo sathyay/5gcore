@@ -18,9 +18,42 @@ def load_cm(name):
     cfg = yaml.safe_load(cm.data["config.yaml"])
     return cm, cfg
 
+def fix_digits(cfg):
+    """
+    PyYAML converts zero-padded strings to integers on load.
+    e.g. mcc: 001 -> 1, amf_region_id: 01 -> 1
+    This function restores all required zero-padded string values.
+    """
+    # Fix AMF plmn_support_list
+    for p in cfg.get("amf", {}).get("plmn_support_list", []):
+        p["mcc"] = "001"
+        p["mnc"] = "01"
+
+    # Fix AMF served_guami_list
+    for g in cfg.get("amf", {}).get("served_guami_list", []):
+        g["mcc"]           = "001"
+        g["mnc"]           = "01"
+        g["amf_region_id"] = "01"
+        g["amf_set_id"]    = "001"
+        g["amf_pointer"]   = "01"
+
+    return cfg
+
 def save_cm(cm, cfg):
+    # Fix zero-padded digits before saving
+    cfg = fix_digits(cfg)
     cm.data["config.yaml"] = yaml.dump(cfg, default_flow_style=False)
     v1.patch_namespaced_config_map(cm.metadata.name, NAMESPACE, cm)
+
+    # Verify digits after save
+    print(f"\n  [Digit Verification after save]")
+    for p in cfg.get("amf", {}).get("plmn_support_list", []):
+        print(f"  plmn_support_list -> mcc={p['mcc']} mnc={p['mnc']}")
+    for g in cfg.get("amf", {}).get("served_guami_list", []):
+        print(f"  served_guami_list -> mcc={g['mcc']} mnc={g['mnc']} "
+              f"amf_region_id={g['amf_region_id']} "
+              f"amf_set_id={g['amf_set_id']} "
+              f"amf_pointer={g['amf_pointer']}")
 
 # ── Patch oai-5g-basic ───────────────────────────────────────
 def patch_5g_basic(slice):
@@ -53,7 +86,7 @@ def patch_5g_basic(slice):
     smf_info_list = cfg["smf"]["smf_info"].setdefault("sNssaiSmfInfoList", [])
     if not any(e.get("sNssai") == new_nssai for e in smf_info_list):
         smf_info_list.append({
-            "sNssai": new_nssai,
+            "sNssai":         new_nssai,
             "dnnSmfInfoList": [{"dnn": new_dnn}]
         })
         print(f"  ✅ smf.smf_info.sNssaiSmfInfoList: added DNN={new_dnn}")
@@ -68,9 +101,9 @@ def patch_5g_basic(slice):
             "single_nssai": new_nssai,
             "dnn":          new_dnn,
             "qos_profile": {
-                "5qi":              9,
-                "session_ambr_ul":  f"{slice.get('qos', {}).get('max_ul_mbps', 100)}Mbps",
-                "session_ambr_dl":  f"{slice.get('qos', {}).get('max_dl_mbps', 200)}Mbps",
+                "5qi":             9,
+                "session_ambr_ul": f"{slice.get('qos', {}).get('max_ul_mbps', 100)}Mbps",
+                "session_ambr_dl": f"{slice.get('qos', {}).get('max_dl_mbps', 200)}Mbps",
             }
         })
         print(f"  ✅ smf.local_subscription_infos: added QoS for DNN={new_dnn}")
@@ -82,7 +115,7 @@ def patch_5g_basic(slice):
     upf_info_list = cfg["upf"]["upf_info"].setdefault("sNssaiUpfInfoList", [])
     if not any(e.get("sNssai") == new_nssai for e in upf_info_list):
         upf_info_list.append({
-            "sNssai":        new_nssai,
+            "sNssai":         new_nssai,
             "dnnUpfInfoList": [{"dnn": new_dnn}]
         })
         print(f"  ✅ upf.upf_info.sNssaiUpfInfoList: added")
@@ -105,9 +138,9 @@ def patch_5g_basic(slice):
 
     if changed:
         save_cm(cm, cfg)
-        print(f"  ✅ oai-5g-basic saved successfully")
+        print(f"\n  ✅ oai-5g-basic saved successfully")
     else:
-        print(f"  ℹ️  No changes needed for oai-5g-basic")
+        print(f"\n  ℹ️  No changes needed for oai-5g-basic")
 
 # ── Patch oai-gnb-configmap ──────────────────────────────────
 def patch_gnb(slice):
@@ -119,7 +152,9 @@ def patch_gnb(slice):
 
     if new_nssai not in nssais:
         nssais.append(new_nssai)
-        save_cm(cm, cfg)
+        # Note: gNB configmap does not have AMF fields, save directly
+        cm.data["config.yaml"] = yaml.dump(cfg, default_flow_style=False)
+        v1.patch_namespaced_config_map(cm.metadata.name, NAMESPACE, cm)
         print(f"  ✅ oai-gnb-configmap snssaiList: added SST={slice['sst']} SD={slice['sd']}")
     else:
         print(f"  ℹ️  oai-gnb-configmap: NSSAI already exists")
