@@ -93,18 +93,13 @@ jobs:
 
       - name: Install Python dependencies
         run: pip install pyyaml kubernetes jinja2
-
-      - name: Patch AMF configmap
+        
+      - name: Patch oai-5g-basic (AMF+SMF+UPF)
         run: |
           python scripts/provision_slice.py \
             --slice ${{ needs.validate.outputs.slice_file }} \
-            --target amf
-
-      - name: Patch SMF configmap
-        run: |
-          python scripts/provision_slice.py \
-            --slice ${{ needs.validate.outputs.slice_file }} \
-            --target smf
+            --target 5g-basic
+      
 
       - name: Patch gNB configmap
         run: |
