@@ -1,0 +1,52 @@
+---
+- name: Update 5G UPF Routing
+  hosts: localhost
+  connection: local
+  vars:
+    upf_namespace: oai5g
+    upf_label: app.kubernetes.io/name=oai-upf
+    target_network: "14.1.1.0/24"
+    new_gateway: "12.1.1.1"
+    interface: "tun0"
+
+  tasks:
+    - name: Get UPF pod name
+      command: >
+        kubectl get pod -n {{ upf_namespace }}
+        -l {{ upf_label }}
+        -o jsonpath={.items[0].metadata.name}
+      register: upf_pod
+      changed_when: false
+
+    - name: Show Pre-Change Routes
+      command: kubectl exec -n {{ upf_namespace }} {{ upf_pod.stdout }} -- ip route show
+      register: pre_routes
+      changed_when: false
+
+    - name: Print Pre-Change Routes
+      debug:
+        msg: |
+          ===== ROUTES BEFORE CHANGE =====
+          {{ pre_routes.stdout }}
+
+    - name: Apply Route Change
+      command: >
+        kubectl exec -n {{ upf_namespace }} {{ upf_pod.stdout }} --
+        ip route replace {{ target_network }} via {{ new_gateway }} dev {{ interface }}
+      register: route_change
+
+    - name: Show Post-Change Routes
+      command: kubectl exec -n {{ upf_namespace }} {{ upf_pod.stdout }} -- ip route show
+      register: post_routes
+      changed_when: false
+
+    - name: Print Post-Change Routes
+      debug:
+        msg: |
+          ===== ROUTES AFTER CHANGE =====
+          {{ post_routes.stdout }}
+
+    - name: Verify route was applied
+      fail:
+        msg: "Route change failed! {{ target_network }} not found in routing table."
+      when: target_network not in post_routes.stdout

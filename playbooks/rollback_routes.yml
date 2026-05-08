@@ -1,0 +1,35 @@
+---
+- name: Rollback 5G UPF Routing to Default
+  hosts: localhost
+  connection: local
+  vars:
+    upf_namespace: oai5g
+    upf_label: app.kubernetes.io/name=oai-upf
+    target_network: "14.1.1.0/24"
+    original_gateway: "12.1.1.1"
+    interface: "tun0"
+
+  tasks:
+    - name: Get UPF pod name
+      command: >
+        kubectl get pod -n {{ upf_namespace }}
+        -l {{ upf_label }}
+        -o jsonpath={.items[0].metadata.name}
+      register: upf_pod
+      changed_when: false
+
+    - name: Rollback Route to Original
+      command: >
+        kubectl exec -n {{ upf_namespace }} {{ upf_pod.stdout }} --
+        ip route replace {{ target_network }} via {{ original_gateway }} dev {{ interface }}
+
+    - name: Show Routes After Rollback
+      command: kubectl exec -n {{ upf_namespace }} {{ upf_pod.stdout }} -- ip route show
+      register: rollback_routes
+      changed_when: false
+
+    - name: Print Rollback Result
+      debug:
+        msg: |
+          ===== ROUTES AFTER ROLLBACK =====
+          {{ rollback_routes.stdout }}
