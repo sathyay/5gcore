@@ -27,7 +27,7 @@ jobs:
   # ════════════════════════════════════════════════════════════
   validate:
     name: "Job 1 — Validate Slice Config"
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     outputs:
       slice_file: ${{ steps.detect.outputs.slice_file }}
       slice_name: ${{ steps.detect.outputs.slice_name }}
