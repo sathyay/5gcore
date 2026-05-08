@@ -10,15 +10,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Ansible
-        run: |
-          pip install ansible
-
-      - name: Configure kubeconfig
-        run: |
-          echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
-          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
-
-      - name: Run Rollback Playbook
-        run: |
-          ansible-playbook playbooks/rollback_routes.yml
+      - name: Test Workflow
+        run: echo "Workflow working successfully"
