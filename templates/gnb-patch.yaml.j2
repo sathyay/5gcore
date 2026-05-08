@@ -1,0 +1,18 @@
+# ─────────────────────────────────────────────────────────────
+# templates/gnb-patch.yaml.j2
+# Jinja2 template for gNB NSSAI broadcast list patch
+# gNB advertises these slices over the air to UEs
+# ─────────────────────────────────────────────────────────────
+gNBs:
+  - plmn_list:
+      - mcc:        "{{ mcc }}"
+        mnc:        "{{ mnc }}"
+        mnc_length: 2
+        snssaiList:
+          {% for n in existing_nssais %}
+          - sst: {{ n.sst }}
+            sd:  "{{ n.sd }}"
+          {% endfor %}
+          # New NSSAI added by pipeline
+          - sst: {{ sst }}
+            sd:  "{{ sd }}"

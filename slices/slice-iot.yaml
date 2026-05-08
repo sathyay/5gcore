@@ -1,0 +1,20 @@
+# ─────────────────────────────────────────────────────────────
+# SLICE: IoT Factory
+# Purpose: Dedicated 5G slice for IoT sensors on factory floor
+# Engineer commits this file → pipeline auto-provisions slice
+# ─────────────────────────────────────────────────────────────
+slice:
+  name: iot-factory
+  sst: 2                    # Slice/Service Type: 2 = MIoT (Massive IoT)
+  sd: "0x000001"            # Slice Differentiator: unique ID for this slice
+  dnn: iot-factory          # Data Network Name: like APN in 4G
+  mcc: "001"                # Mobile Country Code — must match AMF
+  mnc: "01"                 # Mobile Network Code — must match AMF
+  qos:
+    priority: high
+    max_dl_mbps: 100        # Max downlink speed for this slice
+    max_ul_mbps: 50         # Max uplink speed for this slice
+    latency: low            # Low latency profile
+  upf:
+    dedicated: true         # Spin up a dedicated UPF for this slice
+    replicas: 1

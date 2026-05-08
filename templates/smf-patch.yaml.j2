@@ -1,0 +1,21 @@
+# ─────────────────────────────────────────────────────────────
+# templates/smf-patch.yaml.j2
+# Jinja2 template for SMF DNN/slice configuration patch
+# ─────────────────────────────────────────────────────────────
+smf:
+  dnns:
+    {% for d in existing_dnns %}
+    - dnn:              "{{ d.dnn }}"
+      pdu_session_type: "{{ d.pdu_session_type }}"
+      ipv4_subnet:      "{{ d.ipv4_subnet }}"
+    {% endfor %}
+    # New DNN added by pipeline
+    - dnn:              "{{ dnn }}"
+      pdu_session_type: "IPV4"
+      ipv4_subnet:      "12.1.1.0/24"
+      sst:              {{ sst }}
+      sd:               "{{ sd }}"
+      qos:
+        max_dl_mbps: {{ max_dl_mbps }}
+        max_ul_mbps: {{ max_ul_mbps }}
+        priority:    "{{ priority }}"

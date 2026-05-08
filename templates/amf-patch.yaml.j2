@@ -1,0 +1,18 @@
+# ─────────────────────────────────────────────────────────────
+# templates/amf-patch.yaml.j2
+# Jinja2 template for AMF slice configuration patch
+# Variables injected by provision_slice.py at runtime
+# ─────────────────────────────────────────────────────────────
+amf:
+  plmn_support:
+    - mcc: "{{ mcc }}"
+      mnc: "{{ mnc }}"
+      tac: 1
+      slice_support:
+        {% for s in existing_slices %}
+        - sst: {{ s.sst }}
+          sd:  "{{ s.sd }}"
+        {% endfor %}
+        # New slice added by pipeline
+        - sst: {{ sst }}
+          sd:  "{{ sd }}"

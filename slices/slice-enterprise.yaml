@@ -1,0 +1,20 @@
+# ─────────────────────────────────────────────────────────────
+# SLICE: Enterprise
+# Purpose: Dedicated 5G slice for enterprise office users
+# High bandwidth, standard latency
+# ─────────────────────────────────────────────────────────────
+slice:
+  name: enterprise
+  sst: 1                    # Slice/Service Type: 1 = eMBB (Enhanced Mobile Broadband)
+  sd: "0x000002"            # Slice Differentiator: unique ID for this slice
+  dnn: enterprise           # Data Network Name
+  mcc: "001"
+  mnc: "01"
+  qos:
+    priority: medium
+    max_dl_mbps: 1000       # High bandwidth for office users
+    max_ul_mbps: 500
+    latency: standard
+  upf:
+    dedicated: true
+    replicas: 2             # 2 replicas for redundancy
