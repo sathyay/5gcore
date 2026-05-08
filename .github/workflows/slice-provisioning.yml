@@ -109,7 +109,7 @@ jobs:
 
       - name: Rolling restart AMF
         run: |
-          NODE=$(kubectl get pod -n oai5g -o wide | grep gnb | awk '{print $7}')
+          NODE=$(kubectl get pod -n oai5g -l app.kubernetes.io/name=oai-gnb -o jsonpath='{.items[0].spec.nodeName}')
           kubectl patch deployment oai-amf -n oai5g --type='merge' -p "{\"spec\":{\"template\":{\"spec\":{\"nodeSelector\":{\"kubernetes.io/hostname\":\"$NODE\"}}}}}"
           kubectl rollout restart deployment/oai-amf -n $NAMESPACE
           kubectl rollout status deployment/oai-amf -n $NAMESPACE --timeout=120s
