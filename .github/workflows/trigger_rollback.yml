@@ -5,16 +5,19 @@ on:
 
 jobs:
   rollback:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install Ansible
         run: |
-          sudo apt update
-          sudo apt install -y ansible
+          pip install ansible
+
+      - name: Configure kubeconfig
+        run: |
+          echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
+          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
 
       - name: Run Rollback Playbook
         run: |
