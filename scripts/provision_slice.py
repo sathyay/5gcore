@@ -9,6 +9,14 @@ k8s_config.load_kube_config()
 v1        = client.CoreV1Api()
 NAMESPACE = "oai5g"
 
+def bool_representer(dumper, data):
+    return dumper.represent_scalar(
+        'tag:yaml.org,2002:bool',
+        'yes' if data else 'no'
+    )
+
+yaml.add_representer(bool, bool_representer)
+
 def load_slice(filepath):
     with open(filepath) as f:
         return yaml.safe_load(f)["slice"]
@@ -147,17 +155,30 @@ def patch_gnb(slice):
     print(f"\n[oai-gnb-configmap] Patching snssaiList...")
     cm, cfg = load_cm("oai-gnb-configmap")
 
+    # Capture BEFORE state
+    before_yaml = yaml.dump(cfg, default_flow_style=False)
+    print(f"\n  [BEFORE] oai-gnb-configmap loaded — {len(before_yaml.splitlines())} lines")
+
+    # Fix boolean values that PyYAML corrupts
+    for sec in cfg.get("security", {}):
+        pass  # handled by bool_representer globally
+
     new_nssai = {"sst": slice["sst"], "sd": slice["sd"]}
     nssais    = cfg["gNBs"][0]["plmn_list"][0].setdefault("snssaiList", [])
 
     if new_nssai not in nssais:
         nssais.append(new_nssai)
-        # Note: gNB configmap does not have AMF fields, save directly
-        cm.data["config.yaml"] = yaml.dump(cfg, default_flow_style=False)
+        after_yaml = yaml.dump(cfg, default_flow_style=False)
+
+        # Show diff
+        show_diff(before_yaml, after_yaml, cm.metadata.name)
+
+        cm.data["config.yaml"] = after_yaml
         v1.patch_namespaced_config_map(cm.metadata.name, NAMESPACE, cm)
         print(f"  ✅ oai-gnb-configmap snssaiList: added SST={slice['sst']} SD={slice['sd']}")
     else:
-        print(f"  ℹ️  oai-gnb-configmap: NSSAI already exists")
+        print(f"  ℹ️  oai-gnb-configmap: NSSAI already exists — no changes")
+        
 
 TARGETS = {
     "5g-basic": patch_5g_basic,
