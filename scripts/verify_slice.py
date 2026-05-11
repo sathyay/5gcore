@@ -67,9 +67,25 @@ def check_gnb_nssai(slice: dict) -> bool:
         f"kubectl get pod -n {NAMESPACE} -l app=oai-gnb "
         f"-o jsonpath='{{.items[0].metadata.name}}'"
     ).strip()
-    logs = run(f"kubectl logs -n {NAMESPACE} {gnb_pod} -c gnb | grep -i 'nssai\\|sst'")
-    ok = str(slice["sst"]) in logs
-    print(f"  {'✅' if ok else '❌'} gNB NSSAI SST={slice['sst']} broadcasting: {'YES' if ok else 'NO'}")
+
+    # Match exact NGAP log format: SST=0x02
+    # Convert decimal sst to hex e.g. sst=2 → SST=0x02
+    sst_hex = f"SST=0x{slice['sst']:02x}"
+    sd_val  = slice["sd"].replace("0x", "").upper().lstrip("0") or "0"
+
+    logs = run(
+        f"kubectl logs -n {NAMESPACE} {gnb_pod} -c gnb "
+        f"| grep 'Supported slice'"
+    )
+
+    ok = sst_hex.lower() in logs.lower()
+    print(f"  {'✅' if ok else '❌'} gNB NSSAI {sst_hex} broadcasting: {'YES' if ok else 'NO'}")
+
+    # Print what was found for visibility
+    if logs:
+        for line in logs.strip().splitlines():
+            print(f"    → {line.strip()}")
+
     return ok
 
 def write_report(lines: list):
