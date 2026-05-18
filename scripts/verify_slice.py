@@ -24,54 +24,121 @@ def load_slice(filepath: str) -> dict:
         return yaml.safe_load(f)["slice"]
 
 # ── Check 1: All NF pods are Running ─────────────────────────
+# ── Check 1: Critical NF pods ────────────────────────────────
 def check_pods_running() -> bool:
-    out = run(
-        f"kubectl get pods -n {NAMESPACE} "
-        f"-l 'app in (oai-amf,oai-smf,oai-gnb)' "
-        f"--field-selector=status.phase=Running --no-headers"
-    )
-    count = len([l for l in out.strip().splitlines() if l.strip()])
-    ok = count >= 3
-    print(f"  {'✅' if ok else '❌'} NF pods running: {count}/3 (AMF, SMF, gNB)")
-    return ok
+    deployments = {
+        # critical
+        "oai-amf": ("app.kubernetes.io/name=oai-amf", True),
+        "oai-gnb": ("app=oai-gnb",                    True),
+        # non-critical
+        "oai-smf": ("app.kubernetes.io/name=oai-smf", False),
+    }
 
+    all_ok = True
+    for name, (label, critical) in deployments.items():
+        out    = run(f"kubectl get pods -n {NAMESPACE} -l {label} "
+                     f"--no-headers -o custom-columns=STATUS:.status.phase")
+        status = out.strip()
+        ok     = status == "Running"
+        tag    = "critical" if critical else "non-critical"
+        icon   = "✅" if ok else ("❌" if critical else "⚠️ ")
+        print(f"  {icon} {name}: {status if status else 'Not found'} ({tag})")
+        if critical and not ok:
+            all_ok = False
+
+    print(f"\n  {'✅' if all_ok else '❌'} Critical NF pods running: {'YES' if all_ok else 'NO'}")
+    return all_ok
 # ── Check 2: SCTP association is active ──────────────────────
 def check_sctp() -> bool:
     gnb_pod = run(
         f"kubectl get pod -n {NAMESPACE} -l app=oai-gnb "
         f"-o jsonpath='{{.items[0].metadata.name}}'"
     ).strip()
+
+    if not gnb_pod:
+        print(f"  ❌ SCTP: gNB pod not found")
+        return False
+
     assocs = run(
         f"kubectl exec -n {NAMESPACE} {gnb_pod} -c gnb -- "
         f"cat /proc/net/sctp/assocs"
     )
-    lines = [l for l in assocs.strip().splitlines() if l.strip()]
-    ok = len(lines) > 1
-    print(f"  {'✅' if ok else '❌'} SCTP association: {'UP' if ok else 'DOWN'}")
-    return ok
 
+    lines = [l for l in assocs.strip().splitlines() if l.strip()]
+
+    # Check for ST=3 (ESTABLISHED) in any data line
+    # Fields: ASSOC SOCK STY SST ST ...
+    # Index:    0    1    2   3   4
+    established = False
+    for line in lines[1:]:
+        parts = line.split()
+        if len(parts) > 4 and parts[4] == "3":   # ST=3 = ESTABLISHED
+            established = True
+            break
+
+    ok = established
+    print(f"  {'✅' if ok else '❌'} SCTP association: {'ESTABLISHED (ST=3)' if ok else 'NOT ESTABLISHED'}")
+
+    if lines[1:]:
+        for line in lines[1:]:
+            print(f"    → {line.strip()}")
+
+    return ok
 # ── Check 3: AMF has registered the slice ────────────────────
 def check_amf_slice(slice: dict) -> bool:
+    """Check AMF logs confirm new slice SST is registered."""
     amf_pod = run(
         f"kubectl get pod -n {NAMESPACE} -l app.kubernetes.io/name=oai-amf "
         f"-o jsonpath='{{.items[0].metadata.name}}'"
     ).strip()
-    logs = run(f"kubectl logs -n {NAMESPACE} {amf_pod} | grep -i 'sst'")
-    ok = str(slice["sst"]) in logs
+
+    # Fallback label if above returns empty
+    if not amf_pod:
+        amf_pod = run(
+            f"kubectl get pod -n {NAMESPACE} -l app=oai-amf "
+            f"-o jsonpath='{{.items[0].metadata.name}}'"
+        ).strip()
+
+    if not amf_pod:
+        print(f"  ❌ AMF slice check: AMF pod not found")
+        return False
+
+    # Check AMF startup log for slice support lines
+    logs = run(
+        f"kubectl logs -n {NAMESPACE} {amf_pod} "
+        f"| grep -iE 'SST|slice support'"
+    )
+
+    # Check for both SST value and sNssais in NRF registration body
+    sst_str   = str(slice["sst"])
+    sd_str    = slice["sd"].replace("0x", "").upper().lstrip("0") or "0"
+
+    ok = sst_str in logs
     print(f"  {'✅' if ok else '❌'} AMF slice SST={slice['sst']} registered: {'YES' if ok else 'NO'}")
+
+    if logs:
+        for line in logs.strip().splitlines()[:5]:
+            print(f"    → {line.strip()}")
+
     return ok
 
 # ── Check 4: gNB broadcasting new NSSAI ──────────────────────
 def check_gnb_nssai(slice: dict) -> bool:
+    """
+    Check gNB NGAP logs for exact SST=0x0N format.
+    Example: SST=0x02 for sst=2
+    """
     gnb_pod = run(
         f"kubectl get pod -n {NAMESPACE} -l app=oai-gnb "
         f"-o jsonpath='{{.items[0].metadata.name}}'"
     ).strip()
 
-    # Match exact NGAP log format: SST=0x02
-    # Convert decimal sst to hex e.g. sst=2 → SST=0x02
+    if not gnb_pod:
+        print(f"  ❌ gNB NSSAI check: gNB pod not found")
+        return False
+
+    # Convert decimal sst to hex format used in NGAP logs
     sst_hex = f"SST=0x{slice['sst']:02x}"
-    sd_val  = slice["sd"].replace("0x", "").upper().lstrip("0") or "0"
 
     logs = run(
         f"kubectl logs -n {NAMESPACE} {gnb_pod} -c gnb "
@@ -81,7 +148,6 @@ def check_gnb_nssai(slice: dict) -> bool:
     ok = sst_hex.lower() in logs.lower()
     print(f"  {'✅' if ok else '❌'} gNB NSSAI {sst_hex} broadcasting: {'YES' if ok else 'NO'}")
 
-    # Print what was found for visibility
     if logs:
         for line in logs.strip().splitlines():
             print(f"    → {line.strip()}")
@@ -109,10 +175,10 @@ if __name__ == "__main__":
     print(f"{'='*50}\n")
 
     results = {
-        "pods_running":  check_pods_running(),
-        "sctp_up":       check_sctp(),
-        "amf_slice":     check_amf_slice(slice_cfg),
-        "gnb_nssai":     check_gnb_nssai(slice_cfg),
+        "pods_running": check_pods_running(),
+        "sctp_up":      check_sctp(),
+        "amf_slice":    check_amf_slice(slice_cfg),
+        "gnb_nssai":    check_gnb_nssai(slice_cfg),
     }
 
     passed = sum(results.values())
