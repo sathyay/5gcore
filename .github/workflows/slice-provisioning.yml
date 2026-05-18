@@ -173,31 +173,31 @@ jobs:
   # Automatically undoes all NF changes
   # Prevents broken config staying in cluster
   # ════════════════════════════════════════════════════════════
-  rollback:
-    name: "Job 4 — Rollback on Failure"
-    runs-on: ubuntu-latest
-    needs: [provision, verify]
-    if: failure()
+  # rollback:
+  #   name: "Job 4 — Rollback on Failure"
+  #   runs-on: ubuntu-latest
+  #   needs: [provision, verify]
+  #   if: failure()
 
-    steps:
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
+  #   steps:
+  #     - name: Setup kubectl
+  #       uses: azure/setup-kubectl@v3
 
-      - name: Configure AKS credentials
-        run: |
-          echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
-          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
+  #     - name: Configure AKS credentials
+  #       run: |
+  #         echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
+  #         echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
 
-      - name: Rollback AMF
-        run: kubectl rollout undo deployment/oai-amf -n $NAMESPACE
+  #     - name: Rollback AMF
+  #       run: kubectl rollout undo deployment/oai-amf -n $NAMESPACE
 
-      - name: Rollback SMF
-        run: kubectl rollout undo deployment/oai-smf -n $NAMESPACE
+  #     - name: Rollback SMF
+  #       run: kubectl rollout undo deployment/oai-smf -n $NAMESPACE
 
-      - name: Rollback gNB
-        run: kubectl rollout undo deployment/oai-gnb -n $NAMESPACE
+  #     - name: Rollback gNB
+  #       run: kubectl rollout undo deployment/oai-gnb -n $NAMESPACE
 
-      - name: Notify rollback
-        run: |
-          echo "❌ Slice provisioning FAILED — all NFs rolled back"
-          echo "Check pipeline logs for details"
+  #     - name: Notify rollback
+  #       run: |
+  #         echo "❌ Slice provisioning FAILED — all NFs rolled back"
+  #         echo "Check pipeline logs for details"
