@@ -44,12 +44,12 @@ jobs:
         run: python scripts/stress_test_isolation.py
         continue-on-error: true   # let report/dashboard publish even if isolation fails — visibility over silence
 
-      - name: Publish metrics to dashboard
-        if: always()
-        run: |
-          python scripts/publish_metrics.py \
-            --report isolation_report.json \
-            --gateway ${{ secrets.PUSHGATEWAY_URL }}
+      # - name: Publish metrics to dashboard
+      #   if: always()
+      #   run: |
+      #     python scripts/publish_metrics.py \
+      #       --report isolation_report.json \
+      #       --gateway ${{ secrets.PUSHGATEWAY_URL }}
 
       - name: Upload isolation report
         if: always()
