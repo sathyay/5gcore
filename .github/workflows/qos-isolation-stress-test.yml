@@ -1,0 +1,65 @@
+name: QoS Isolation Stress Test
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: '0 */6 * * *'   # periodic demo / regression run
+
+env:
+  NAMESPACE: oai5g
+
+jobs:
+
+  stress-test:
+    name: Generate Congestion + Verify Isolation
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Configure AKS credentials
+        run: |
+          echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > kubeconfig
+          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
+
+      - name: Install Python dependencies
+        run: pip install pyyaml kubernetes requests
+
+      - name: Confirm baseline slices are healthy
+        run: |
+          python scripts/verify_slice.py --slice slices/slice-iot.yaml
+          python scripts/verify_slice.py --slice slices/slice-enterprise.yaml
+
+      - name: Run stress test + isolation proof
+        id: stress
+        run: python scripts/stress_test_isolation.py
+        continue-on-error: true   # let report/dashboard publish even if isolation fails — visibility over silence
+
+      - name: Publish metrics to dashboard
+        if: always()
+        run: |
+          python scripts/publish_metrics.py \
+            --report isolation_report.json \
+            --gateway ${{ secrets.PUSHGATEWAY_URL }}
+
+      - name: Upload isolation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qos-isolation-report
+          path: isolation_report.json
+
+      - name: Fail pipeline if isolation was violated
+        if: steps.stress.outcome == 'failure'
+        run: |
+          echo "❌ Isolation check failed — see isolation_report.json artifact"
+          exit 1
