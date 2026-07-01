@@ -1,0 +1,84 @@
+{
+  "title": "5G Multi-Slice QoS Isolation Dashboard",
+  "timezone": "browser",
+  "panels": [
+    {
+      "title": "Premium (Enterprise) Slice Throughput",
+      "type": "stat",
+      "targets": [{ "expr": "slice_throughput_mbps{slice=\"enterprise\"}" }],
+      "fieldConfig": { "defaults": { "unit": "Mbits" } },
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 }
+    },
+    {
+      "title": "Standard (IoT) Slice Throughput",
+      "type": "stat",
+      "targets": [{ "expr": "slice_throughput_mbps{slice=\"iot-factory\"}" }],
+      "fieldConfig": { "defaults": { "unit": "Mbits" } },
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 }
+    },
+    {
+      "title": "Premium Latency Target",
+      "type": "stat",
+      "targets": [{ "expr": "3" }],
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "description": "Configured demo target via tc netem, not radio-scheduler measured",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 }
+    },
+    {
+      "title": "Standard Latency Target",
+      "type": "stat",
+      "targets": [{ "expr": "25" }],
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "description": "Configured demo target via tc netem, not radio-scheduler measured",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 }
+    },
+    {
+      "title": "Premium Slice Packet Loss",
+      "type": "gauge",
+      "targets": [{ "expr": "slice_packet_loss_pct{slice=\"enterprise\"}" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 5 } },
+      "gridPos": { "x": 0, "y": 4, "w": 8, "h": 6 }
+    },
+    {
+      "title": "Slice Isolation Status",
+      "type": "stat",
+      "targets": [
+        { "expr": "isolation_enterprise_unaffected", "legendFormat": "Enterprise Unaffected" },
+        { "expr": "isolation_iot_capped", "legendFormat": "IoT Capped As Configured" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "FAIL", "color": "red" } } },
+            { "type": "value", "options": { "1": { "text": "PASS", "color": "green" } } }
+          ]
+        }
+      },
+      "gridPos": { "x": 8, "y": 4, "w": 8, "h": 6 }
+    },
+    {
+      "title": "UPF Auto-Scale Status (load > 80%)",
+      "type": "stat",
+      "targets": [{ "expr": "upf_autoscaled" }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "Not Scaled" } } },
+            { "type": "value", "options": { "1": { "text": "Auto-Scaled ✅" } } }
+          ]
+        }
+      },
+      "gridPos": { "x": 16, "y": 4, "w": 8, "h": 6 }
+    },
+    {
+      "title": "Throughput Over Time (during stress test)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "slice_throughput_mbps{slice=\"enterprise\"}", "legendFormat": "Enterprise" },
+        { "expr": "slice_throughput_mbps{slice=\"iot-factory\"}", "legendFormat": "IoT" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Mbits" } },
+      "gridPos": { "x": 0, "y": 10, "w": 24, "h": 8 }
+    }
+  ]
+}

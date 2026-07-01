@@ -1,0 +1,36 @@
+# manifests/prometheus-scrape.yaml
+# Assumes Prometheus Operator is installed (kube-prometheus-stack).
+# Scrapes UPF pod metrics + the isolation_report.json published by
+# stress_test_isolation.py (exposed via a tiny sidecar/exporter — see note).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: oai-upf-monitor
+  namespace: oai5g
+  labels:
+    release: prometheus   # match your kube-prometheus-stack release label
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oai-upf
+  namespaceSelector:
+    matchNames:
+      - oai5g
+  endpoints:
+    - port: metrics       # requires a metrics exporter sidecar on UPF;
+      interval: 5s         # see note below if UPF doesn't expose Prometheus metrics natively
+
+---
+# NOTE: OAI UPF does not natively expose Prometheus-format metrics out of
+# the box. Two practical options:
+#   1. Lightweight sidecar that periodically reads /proc/net/dev or tc
+#      stats (tc -s qdisc show) and exposes them on :9100/metrics
+#      (use a small python prometheus_client exporter).
+#   2. Push isolation_report.json results into Prometheus Pushgateway
+#      at the end of each stress test run, rather than continuous
+#      scraping — simpler, sufficient for a periodic-demo use case
+#      rather than true real-time monitoring.
+#
+# Recommend option 2 for the PoC: lower effort, and the dashboard still
+# updates "live" relative to each pipeline run, which matches the demo
+# narrative without building a full custom exporter.

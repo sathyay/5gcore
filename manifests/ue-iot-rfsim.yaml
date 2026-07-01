@@ -1,0 +1,116 @@
+# manifests/ue-iot-rfsim.yaml
+# Second OAI-NR-UE instance, attached on the IoT slice's NSSAI.
+# Needed because isolation/congestion proof requires two UEs generating
+# traffic concurrently — your existing single OAI-NR-UE can't contend
+# against itself.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oai-nr-ue-iot
+  namespace: oai5g
+  labels:
+    app: oai-nr-ue-iot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oai-nr-ue-iot
+  template:
+    metadata:
+      labels:
+        app: oai-nr-ue-iot
+    spec:
+      containers:
+        - name: nr-ue
+          image: oaisoftwarealliance/oai-nr-ue:develop   # match your existing UE image/tag
+          env:
+            - name: USE_SLICE
+              value: "iot-factory"
+            - name: NSSAI_SST
+              value: "2"
+            - name: NSSAI_SD
+              value: "0x000001"
+          volumeMounts:
+            - name: ue-conf
+              mountPath: /opt/oai-nr-ue/etc
+      volumes:
+        - name: ue-conf
+          configMap:
+            name: oai-nr-ue-iot-configmap
+---
+# Existing OAI-NR-UE should be relabeled/pointed at the Enterprise slice's
+# NSSAI (sst=1, sd=0x000002) so the two UEs map cleanly to the two slices
+# used in the stress test (see SLICE_FILES in stress_test_isolation.py).
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: iperf-server-iot
+  namespace: oai5g
+spec:
+  selector:
+    app: iperf-server-iot
+  ports:
+    - port: 5201
+      targetPort: 5201
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iperf-server-iot
+  namespace: oai5g
+  labels:
+    app: iperf-server-iot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iperf-server-iot
+  template:
+    metadata:
+      labels:
+        app: iperf-server-iot
+    spec:
+      containers:
+        - name: iperf3
+          image: networkstatic/iperf3
+          args: ["-s"]
+          ports:
+            - containerPort: 5201
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: iperf-server-enterprise
+  namespace: oai5g
+spec:
+  selector:
+    app: iperf-server-enterprise
+  ports:
+    - port: 5201
+      targetPort: 5201
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iperf-server-enterprise
+  namespace: oai5g
+  labels:
+    app: iperf-server-enterprise
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iperf-server-enterprise
+  template:
+    metadata:
+      labels:
+        app: iperf-server-enterprise
+    spec:
+      containers:
+        - name: iperf3
+          image: networkstatic/iperf3
+          args: ["-s"]
+          ports:
+            - containerPort: 5201
