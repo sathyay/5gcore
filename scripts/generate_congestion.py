@@ -109,3 +109,15 @@ if __name__ == "__main__":
     parser.add_argument("--duration", type=int, default=60)
     args = parser.parse_args()
     main(args.duration)
+
+
+# ── Write results to file so stress_test_isolation.py can read them ──
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--duration", type=int, default=60)
+    args = parser.parse_args()
+    results = main(args.duration)
+    with open("congestion_results.json", "w") as f:
+        import json as _json
+        _json.dump(results, f, indent=2)
+    print(f"\n  📄 Results written: congestion_results.json")

@@ -3,7 +3,7 @@ name: QoS Isolation Stress Test
 on:
   workflow_dispatch:
   # schedule:
-  #   - cron: '0 */6 * * *'   # periodic demo / regression run
+  #   - cron: '0 */6 * * *'   # periodic regression run
 
 env:
   NAMESPACE: oai5g
@@ -34,16 +34,31 @@ jobs:
       - name: Install Python dependencies
         run: pip install pyyaml kubernetes requests
 
-      - name: Confirm baseline slices are healthy
-        run: |
-          python scripts/verify_slice.py --slice slices/slice-iot.yaml
-          python scripts/verify_slice.py --slice slices/slice-enterprise.yaml
+      # ── Step 1: Confirm both slices are healthy before stressing ──
+      - name: Baseline — verify IoT slice
+        run: python scripts/verify_slice.py --slice slices/slice-iot.yaml
 
-      - name: Run stress test + isolation proof
-        id: stress
+      - name: Baseline — verify Enterprise slice
+        run: python scripts/verify_slice.py --slice slices/slice-enterprise.yaml
+
+      # ── Step 2: Apply per-slice QoS shaping on UPF pods ───────────
+      - name: Apply QoS shaping — IoT slice
+        run: python scripts/apply_qos_shaping.py --slice slices/slice-iot.yaml
+
+      - name: Apply QoS shaping — Enterprise slice
+        run: python scripts/apply_qos_shaping.py --slice slices/slice-enterprise.yaml
+
+      # ── Step 3+4: Generate congestion from both UEs concurrently ──
+      - name: Generate congestion
+        run: python scripts/generate_congestion.py --duration 60
+
+      # ── Step 5+6: Verify isolation + autoscale, write report ──────
+      - name: Verify isolation + check autoscale
+        id: isolation
         run: python scripts/stress_test_isolation.py
-        continue-on-error: true   # let report/dashboard publish even if isolation fails — visibility over silence
+        continue-on-error: true   # always publish dashboard even on failure
 
+      # ── Step 7: Push metrics to Grafana via Pushgateway ───────────
       # - name: Publish metrics to dashboard
       #   if: always()
       #   run: |
@@ -51,6 +66,9 @@ jobs:
       #       --report isolation_report.json \
       #       --gateway ${{ secrets.PUSHGATEWAY_URL }}
 
+      # ── Teardown: shaping already removed inside stress_test_isolation.py ──
+
+      # ── Upload report artifact ─────────────────────────────────────
       - name: Upload isolation report
         if: always()
         uses: actions/upload-artifact@v4
@@ -58,8 +76,9 @@ jobs:
           name: qos-isolation-report
           path: isolation_report.json
 
-      - name: Fail pipeline if isolation was violated
-        if: steps.stress.outcome == 'failure'
+      # ── Fail the pipeline cleanly if isolation was violated ────────
+      - name: Fail if isolation violated
+        if: steps.isolation.outcome == 'failure'
         run: |
-          echo "❌ Isolation check failed — see isolation_report.json artifact"
+          echo "❌ Isolation check FAILED — see isolation_report.json artifact"
           exit 1
