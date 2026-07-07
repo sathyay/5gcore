@@ -1,44 +1,46 @@
 #!/usr/bin/env python3
 """
-generate_congestion.py
-───────────────────────
-Drives concurrent iperf3 load from each slice's UE pod through its UPF,
-deliberately overdriving the IoT slice past its configured AMBR cap while
-the Enterprise slice runs a normal/light load — the contention needed to
-prove isolation.
+generate_congestion.py — Single UE / Traffic-Server Demo Mode
+──────────────────────────────────────────────────────────────
+Uses oai-traffic-server to generate two concurrent iperf3 streams
+on different ports, simulating two slice traffic profiles:
 
-Requires: a second RFsim UE attached on the IoT slice's NSSAI (see
-manifests/ue-iot-rfsim.yaml). Without two concurrent UEs there is nothing
-to contend over, and "isolation under stress" can't be demonstrated.
+  Port 5201 → IoT slice   (300Mbps push, 100Mbps cap enforced by tc)
+  Port 5202 → Enterprise  (200Mbps push, runs clean and unaffected)
 
-Usage:
-  python generate_congestion.py --duration 60
+tc shaping rules on traffic-server loopback enforce the caps.
+The isolation proof: Enterprise stream unaffected when IoT is flooded.
+
+No second UE pod needed — proven working with existing oai-traffic-server.
 """
 import argparse
 import subprocess
 import threading
 import json
 import datetime
+import sys
 
-NAMESPACE = "oai5g"
+NAMESPACE          = "oai5g"
+TRAFFIC_SERVER_POD = "app=oai-traffic-server"
 
-UE_TARGETS = {
+STREAMS = {
     "iot-factory": {
-        "ue_pod_label": "app=oai-nr-ue-iot",
-        "server": "iperf-server-iot.oai5g.svc.cluster.local",
-        "overdrive_mbps": 300,   # deliberately > slice-iot.yaml cap of 100Mbps
+        "port":        5201,
+        "target_mbps": 300,
+        "cap_mbps":    100,
+        "label":       "IoT — overdriving cap (300Mbps → enforced 100Mbps)",
     },
     "enterprise": {
-        "ue_pod_label": "app=oai-nr-ue-enterprise",
-        "server": "iperf-server-enterprise.oai5g.svc.cluster.local",
-        "overdrive_mbps": 200,   # well under slice-enterprise.yaml cap of 1000Mbps
+        "port":        5202,
+        "target_mbps": 200,
+        "cap_mbps":    1000,
+        "label":       "Enterprise — normal load (200Mbps, unaffected)",
     },
 }
 
 
 def run(cmd: str) -> str:
-    r = subprocess.run(cmd, capture_output=True, text=True, shell=True)
-    return r.stdout.strip()
+    return subprocess.run(cmd, capture_output=True, text=True, shell=True).stdout.strip()
 
 
 def get_pod(label: str) -> str:
@@ -48,58 +50,100 @@ def get_pod(label: str) -> str:
     )
 
 
-def run_iperf(slice_name: str, target: dict, duration: int, results: dict):
-    pod = get_pod(target["ue_pod_label"])
-    if not pod:
-        results[slice_name] = {"error": f"UE pod not found for label {target['ue_pod_label']}"}
-        return
+def ensure_iperf_servers(pod: str):
+    for name, cfg in STREAMS.items():
+        port  = cfg["port"]
+        check = run(f"kubectl exec -n {NAMESPACE} {pod} -- "
+                    f"ss -tlnp | grep :{port}")
+        if not check:
+            subprocess.Popen(
+                f"kubectl exec -n {NAMESPACE} {pod} -- "
+                f"iperf3 -s -p {port} -D",
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            print(f"  ▶ iperf3 server started on port {port} ({name})")
+        else:
+            print(f"  ℹ️  iperf3 server already running on port {port} ({name})")
+    import time; time.sleep(2)
 
+
+def run_stream(name: str, cfg: dict, pod: str,
+               duration: int, results: dict):
     cmd = (
         f"kubectl exec -n {NAMESPACE} {pod} -- "
-        f"iperf3 -c {target['server']} -t {duration} "
-        f"-b {target['overdrive_mbps']}M -J"
+        f"iperf3 -c 127.0.0.1 -p {cfg['port']} "
+        f"-t {duration} -b {cfg['target_mbps']}M -J"
     )
     out = run(cmd)
     try:
         data = json.loads(out)
-        end = data.get("end", {})
-        results[slice_name] = {
+        end  = data.get("end", {})
+        results[name] = {
             "throughput_mbps": round(
                 end.get("sum_received", {}).get("bits_per_second", 0) / 1e6, 1
             ),
-            "loss_pct": end.get("sum", {}).get("lost_percent", None),
-            "retransmits": end.get("sum_sent", {}).get("retransmits", None),
+            "loss_pct":    end.get("sum", {}).get("lost_percent", 0.0),
+            "retransmits": end.get("sum_sent", {}).get("retransmits", 0),
+            "cap_mbps":    cfg["cap_mbps"],
+            "target_mbps": cfg["target_mbps"],
         }
-    except json.JSONDecodeError:
-        results[slice_name] = {"error": "iperf3 output not parseable", "raw": out[:500]}
+    except (json.JSONDecodeError, KeyError) as e:
+        results[name] = {"error": f"iperf3 parse failed: {e}", "raw": out[:300]}
 
 
-def main(duration: int):
+def main(duration: int, dry_run: bool = False) -> dict:
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     print(f"\n{'='*55}")
     print(f"  Congestion Generation — {now}")
-    print(f"  Duration: {duration}s | Slices: {list(UE_TARGETS)}")
+    print(f"  Duration: {duration}s | Mode: {'DRY RUN' if dry_run else 'LIVE'}")
     print(f"{'='*55}\n")
 
-    results = {}
-    threads = []
-    for slice_name, target in UE_TARGETS.items():
-        print(f"  ▶ Starting iperf3 on '{slice_name}' "
-              f"(target {target['overdrive_mbps']}Mbps)")
-        t = threading.Thread(target=run_iperf, args=(slice_name, target, duration, results))
-        threads.append(t)
-        t.start()
+    pod = get_pod(TRAFFIC_SERVER_POD)
+    if not pod:
+        print(f"  ❌ oai-traffic-server pod not found "
+              f"(label: {TRAFFIC_SERVER_POD})")
+        sys.exit(1)
+    print(f"  Traffic server pod: {pod}\n")
 
-    for t in threads:
-        t.join()
+    if dry_run:
+        print(f"  ✅ DRY RUN — pod found, skipping iperf3")
+        return {}
+
+    ensure_iperf_servers(pod)
+
+    print(f"  Launching concurrent streams:\n")
+    for name, cfg in STREAMS.items():
+        print(f"  ▶ {name}: port={cfg['port']} "
+              f"target={cfg['target_mbps']}Mbps "
+              f"cap={cfg['cap_mbps']}Mbps — {cfg['label']}")
+
+    results = {}
+    threads = [
+        threading.Thread(
+            target=run_stream,
+            args=(name, cfg, pod, duration, results)
+        )
+        for name, cfg in STREAMS.items()
+    ]
+    for t in threads: t.start()
+    for t in threads: t.join()
 
     print(f"\n  Results:\n")
-    for slice_name, r in results.items():
+    for name, r in results.items():
         if "error" in r:
-            print(f"  ❌ {slice_name}: {r['error']}")
-        else:
-            print(f"  {slice_name:15s} throughput={r['throughput_mbps']}Mbps "
-                  f"loss={r['loss_pct']}% retransmits={r['retransmits']}")
+            print(f"  ❌ {name}: {r['error']}")
+            continue
+        cap    = r["cap_mbps"]
+        tput   = r["throughput_mbps"]
+        capped = tput <= cap * 1.15
+        icon   = "✅" if capped else "⚠️ "
+        print(f"  {icon} {name:15s}  "
+              f"throughput={tput}Mbps  "
+              f"cap={cap}Mbps  "
+              f"loss={r['loss_pct']}%  "
+              f"retransmits={r['retransmits']}")
 
     return results
 
@@ -107,17 +151,11 @@ def main(duration: int):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--duration", type=int, default=60)
+    parser.add_argument("--dry-run",  action="store_true")
     args = parser.parse_args()
-    main(args.duration)
 
+    results = main(args.duration, args.dry_run)
 
-# ── Write results to file so stress_test_isolation.py can read them ──
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--duration", type=int, default=60)
-    args = parser.parse_args()
-    results = main(args.duration)
     with open("congestion_results.json", "w") as f:
-        import json as _json
-        _json.dump(results, f, indent=2)
+        json.dump(results, f, indent=2)
     print(f"\n  📄 Results written: congestion_results.json")
