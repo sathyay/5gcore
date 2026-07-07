@@ -51,7 +51,8 @@ def get_upf_pod(slice_cfg: dict) -> str:
 
 
 def apply_shaping(slice_cfg: dict, pod: str):
-    subnet = slice_cfg.get("ipv4_subnet", "12.2.1.0/24")
+    SUBNET_OVERRIDE = {"iot-factory": "12.2.1.0/24", "enterprise": "12.3.1.0/24"}
+    subnet = SUBNET_OVERRIDE.get(slice_cfg.get("name", ""), slice_cfg.get("ipv4_subnet", "12.2.1.0/24"))
     dl_mbps = slice_cfg.get("qos", {}).get("max_dl_mbps", 100)
     ul_mbps = slice_cfg.get("qos", {}).get("max_ul_mbps", 50)
     latency = slice_cfg.get("qos", {}).get("latency", "standard")
@@ -62,7 +63,7 @@ def apply_shaping(slice_cfg: dict, pod: str):
     print(f"\n[QoS Shaping] {slice_cfg['name']} -> pod={pod} subnet={subnet}")
     print(f"  DL cap: {dl_mbps}Mbps | UL cap: {ul_mbps}Mbps | delay: {delay_ms}")
 
-    iface = "n3"  # UPF interface facing the RAN side; adjust to actual iface name
+    iface = "tun0"  # actual UPF data plane interface (confirmed via ip link show)
 
     cmds = [
         f"tc qdisc del dev {iface} root 2>/dev/null || true",
@@ -82,7 +83,7 @@ def apply_shaping(slice_cfg: dict, pod: str):
 
 
 def teardown_shaping(pod: str):
-    iface = "n3"
+    iface = "tun0"
     print(f"\n[QoS Shaping] Teardown on pod={pod}")
     run(f"kubectl exec -n {NAMESPACE} {pod} -- tc qdisc del dev {iface} root")
     print(f"  ✅ Shaping removed")
