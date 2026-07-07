@@ -21,7 +21,7 @@ import datetime
 import sys
 
 NAMESPACE          = "oai5g"
-TRAFFIC_SERVER_POD = "app=oai-traffic-server"
+TRAFFIC_SERVER_POD = "app.kubernetes.io/name=oai-traffic-server"
 
 STREAMS = {
     "iot-factory": {
